@@ -1,0 +1,8 @@
+people/alice.md:5: name: expected string; found number
+people/alice.md:11: link: link target does not exist: "missing.md"
+people/alice.md:12: link: heading does not exist: "../organizations/acme.md#missing"
+people/bob.md:2: name: required field is missing; add it
+people/bob.md:3: @id: duplicate ID "person:alice"; first declared in people/alice.md
+people/bob.md:9: link: link target does not exist: "../assets/overview.txt/child.md"
+people/broken.md:2: frontmatter: invalid YAML: sequence end token ']' not found; fix the syntax before checking these fields
+people/broken.md:7: link: link target does not exist: "another-missing.md"

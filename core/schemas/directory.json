@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Superlexical Directory",
+  "type": "object",
+  "required": ["@context", "@id", "@type", "name"],
+  "properties": {
+    "@context": {"const": "https://schema.org"},
+    "@id": {"type": "string", "format": "uri", "pattern": "^[^\\s]+$"},
+    "@type": {"enum": ["Person", "Organization"]},
+    "name": {"type": "string", "pattern": "\\S"}
+  }
+}
