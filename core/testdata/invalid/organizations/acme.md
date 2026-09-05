@@ -1,6 +1,6 @@
 ---
 "@context": https://schema.org
-"@id": organization:acme
+"@id": organization:DZO8p_bVF1ENdFAYHmxc7
 "@type": Organization
 name: Acme Studio
 ---

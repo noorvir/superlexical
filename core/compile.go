@@ -3,94 +3,77 @@ package core
 
 import (
 	"bytes"
-	_ "embed"
+	"cmp"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-
-	"github.com/santhosh-tekuri/jsonschema/v6"
+	"slices"
 )
 
 // Compile validates every .md file under root against a JSON Schema, then checks
 // IDs and Markdown links. Document errors are diagnostics; unusable schemas and root directories
 // return an error. Callers must keep the workspace stable during the call.
 func Compile(root string, schema []byte) ([]Diagnostic, error) {
-	definition, err := jsonschema.UnmarshalJSON(bytes.NewReader(schema))
-	if err != nil {
-		return nil, fmt.Errorf("read schema: %w", err)
-	}
-	compiler := jsonschema.NewCompiler()
-	compiler.DefaultDraft(jsonschema.Draft7)
-	compiler.AssertFormat()
-	if err := compiler.AddResource("urn:superlexical:schema", definition); err != nil {
-		return nil, fmt.Errorf("load schema: %w", err)
-	}
-	compiled, err := compiler.Compile("urn:superlexical:schema")
-	if err != nil {
-		return nil, fmt.Errorf("compile schema: %w", err)
-	}
-
-	root, err = filepath.Abs(root)
+	compiled, err := compileSchema(schema)
 	if err != nil {
 		return nil, err
+	}
+	root, err = workspaceRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	return compile(root, []scope{{path: ".", schema: compiled}}, nil), nil
+}
+
+func workspaceRoot(root string) (string, error) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
 	}
 	root, err = filepath.EvalSymlinks(root)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	info, err := os.Stat(root)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("root is not a directory: %s", root)
+		return "", fmt.Errorf("root is not a directory: %s", root)
 	}
 
-	documents, diagnostics, err := readDocuments(root)
-	if err != nil {
-		return nil, fmt.Errorf("read workspace: %w", err)
-	}
-	recordIssues := validateRecords(documents, compiled)
-	diagnostics = append(diagnostics, recordIssues...)
-
-	byPath := make(map[string]document, len(documents))
-	for _, doc := range documents {
-		byPath[doc.path] = doc
-	}
-
-	for _, doc := range documents {
-		for _, link := range doc.links {
-			message, err := checkLink(root, doc.path, link.destination, byPath)
-			if err != nil {
-				message = fmt.Sprintf("cannot check link %q: %s", link.destination, fileError(err))
-			}
-			if message != "" {
-				diagnostics = append(diagnostics, Diagnostic{doc.path, link.line, "link", message})
-			}
-		}
-	}
-	sort.Slice(diagnostics, func(i, j int) bool {
-		a, b := diagnostics[i], diagnostics[j]
-		if a.Path != b.Path {
-			return a.Path < b.Path
-		}
-		if a.Line != b.Line {
-			return a.Line < b.Line
-		}
-		if a.Field != b.Field {
-			return a.Field < b.Field
-		}
-		return a.Message < b.Message
-	})
-	return diagnostics, nil
+	return root, nil
 }
 
-// DirectorySchema requires the minimal Schema.org Person or Organization record.
-//
-//go:embed schemas/directory.json
-var DirectorySchema []byte
+func compile(root string, scopes []scope, diagnostics []Diagnostic) []Diagnostic {
+	var documents []document
+	ids := make(map[string]string)
+	for _, scope := range scopes {
+		batch, issues, err := readDocuments(root, scope.path)
+		diagnostics = append(diagnostics, issues...)
+		if err != nil {
+			diagnostics = append(diagnostics, Diagnostic{scope.path, 1, "file", "cannot read record folder: " + fileError(err)})
+		}
+		recordIssues := validateRecords(batch, scope.schema, ids)
+		diagnostics = append(diagnostics, recordIssues...)
+		documents = append(documents, batch...)
+	}
 
+	linkIssues := checkLinks(root, documents)
+	diagnostics = append(diagnostics, linkIssues...)
+	slices.SortFunc(diagnostics, func(a, b Diagnostic) int {
+		return cmp.Or(
+			cmp.Compare(a.Path, b.Path),
+			cmp.Compare(a.Line, b.Line),
+			cmp.Compare(a.Field, b.Field),
+			cmp.Compare(a.Message, b.Message),
+		)
+	})
+	return diagnostics
+}
+
+// Diagnostic identifies a validation issue in a workspace-relative source file.
+// Line is one-based; Field is a display label, not a machine-readable path.
 type Diagnostic struct {
 	Path    string
 	Line    int
@@ -98,6 +81,7 @@ type Diagnostic struct {
 	Message string
 }
 
+// String formats the diagnostic for command-line output.
 func (d Diagnostic) String() string {
 	if d.Field == "" {
 		return fmt.Sprintf("%s:%d: %s", d.Path, d.Line, d.Message)

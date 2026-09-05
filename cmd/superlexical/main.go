@@ -28,7 +28,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("validate", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	watchChanges := flags.Bool("watch", false, "revalidate the full directory after file changes")
-	schemaPath := flags.String("schema", "", "JSON Schema file (default: built-in Directory schema)")
+	schemaPath := flags.String("schema", "", "schema for one folder; otherwise read workspace extensions")
 	flags.Usage = func() {
 		fmt.Fprintln(flags.Output(), "Usage: superlexical validate [--schema FILE] [--watch] ROOT")
 		flags.PrintDefaults()
@@ -52,16 +52,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func validate(root, schemaPath string, stdout, stderr io.Writer) int {
-	schema := core.DirectorySchema
-	if schemaPath != "" {
-		var err error
+	var diagnostics []core.Diagnostic
+	var err error
+	if schemaPath == "" {
+		diagnostics, err = core.CompileWorkspace(root)
+	} else {
+		var schema []byte
 		schema, err = os.ReadFile(schemaPath)
 		if err != nil {
 			fmt.Fprintf(stderr, "Cannot read schema: %s\n", err)
 			return 2
 		}
+		diagnostics, err = core.Compile(root, schema)
 	}
-	diagnostics, err := core.Compile(root, schema)
 	if err != nil {
 		fmt.Fprintf(stderr, "Cannot validate %q: %s\n", root, err)
 		return 2

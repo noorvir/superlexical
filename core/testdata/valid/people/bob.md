@@ -1,6 +1,6 @@
 ---
 "@context": https://schema.org
-"@id": person:bob
+"@id": person:PkzrP9vKxncFbh78ydJOc
 "@type": Person
 name: Bob Chen
 ---

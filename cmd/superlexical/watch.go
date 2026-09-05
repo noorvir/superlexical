@@ -16,9 +16,11 @@ import (
 
 func watch(ctx context.Context, root, schemaPath string, stdout, stderr io.Writer) int {
 	root, err := filepath.Abs(root)
-	if err == nil {
-		root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		fmt.Fprintf(stderr, "Cannot watch directory: %s\n", err)
+		return 2
 	}
+	root, err = filepath.EvalSymlinks(root)
 	if err != nil {
 		fmt.Fprintf(stderr, "Cannot watch directory: %s\n", err)
 		return 2
@@ -45,6 +47,12 @@ func watch(ctx context.Context, root, schemaPath string, stdout, stderr io.Write
 		fmt.Fprintf(stderr, "Cannot watch directory: %s\n", err)
 		return 2
 	}
+	return watchChanges(ctx, watcher, root, schemaPath, stdout, stderr)
+}
+
+// watchChanges validates after a quiet interval and returns when the caller
+// cancels or the watcher fails. The caller owns and closes the watcher.
+func watchChanges(ctx context.Context, watcher *fsnotify.Watcher, root, schemaPath string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "Watching %s. Press Ctrl+C to stop.\n", root)
 	status := validate(root, schemaPath, stdout, stderr)
 
@@ -61,14 +69,8 @@ func watch(ctx context.Context, root, schemaPath string, stdout, stderr io.Write
 				fmt.Fprintln(stderr, "File watcher stopped. Validation is no longer automatic.")
 				return 2
 			}
-			if event.Name != schemaPath {
-				relative, err := filepath.Rel(root, event.Name)
-				if err != nil || !filepath.IsLocal(relative) {
-					continue
-				}
-				if strings.Contains("/"+filepath.ToSlash(relative)+"/", "/.git/") {
-					continue
-				}
+			if !validationEvent(root, schemaPath, event.Name) {
+				continue
 			}
 			timer.Reset(150 * time.Millisecond)
 			changed = timer.C
@@ -83,9 +85,9 @@ func watch(ctx context.Context, root, schemaPath string, stdout, stderr io.Write
 		case err, open := <-watcher.Errors:
 			if !open {
 				fmt.Fprintln(stderr, "File watcher stopped. Validation is no longer automatic.")
-			} else {
-				fmt.Fprintf(stderr, "File watcher failed: %s. Run validation again.\n", err)
+				return 2
 			}
+			fmt.Fprintf(stderr, "File watcher failed: %s. Run validation again.\n", err)
 			return 2
 		}
 	}
@@ -103,12 +105,13 @@ func syncWatches(watcher *fsnotify.Watcher, root, schemaPath string) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() {
-			if entry.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			wanted[path] = true
+		if !entry.IsDir() {
+			return nil
 		}
+		if entry.Name() == ".git" {
+			return filepath.SkipDir
+		}
+		wanted[path] = true
 		return nil
 	})
 	if err != nil {
@@ -117,7 +120,9 @@ func syncWatches(watcher *fsnotify.Watcher, root, schemaPath string) error {
 	for _, path := range watcher.WatchList() {
 		if wanted[path] {
 			delete(wanted, path)
-		} else if err := watcher.Remove(path); err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) {
+			continue
+		}
+		if err := watcher.Remove(path); err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) {
 			return err
 		}
 	}
@@ -127,4 +132,17 @@ func syncWatches(watcher *fsnotify.Watcher, root, schemaPath string) error {
 		}
 	}
 	return nil
+}
+
+// validationEvent excludes Git metadata and changes outside the watched roots.
+func validationEvent(root, schemaPath, filename string) bool {
+	if filename == schemaPath {
+		return true
+	}
+	relative, err := filepath.Rel(root, filename)
+	if err != nil || !filepath.IsLocal(relative) {
+		return false
+	}
+	path := "/" + filepath.ToSlash(relative) + "/"
+	return !strings.Contains(path, "/.git/")
 }

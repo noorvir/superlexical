@@ -1,0 +1,4 @@
+- [ ] File server/API for Markdown and assets
+- [ ] Update subscriptions for external indexers
+- [ ] Extension dependencies
+- [ ] Executable extension support

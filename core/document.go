@@ -2,16 +2,25 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func readDocuments(root string) ([]document, []Diagnostic, error) {
+func readDocuments(root, folder string) ([]document, []Diagnostic, error) {
+	directory := filepath.Join(root, filepath.FromSlash(folder))
+	info, err := os.Lstat(directory)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !info.IsDir() {
+		return nil, nil, fmt.Errorf("record folder must be a directory, not a file or symbolic link")
+	}
 	var documents []document
 	var diagnostics []Diagnostic
-	err := filepath.WalkDir(root, func(filename string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(directory, func(filename string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if filename == root {
 				return walkErr
@@ -20,11 +29,13 @@ func readDocuments(root string) ([]document, []Diagnostic, error) {
 			if err != nil {
 				return err
 			}
-			diagnostics = append(diagnostics, Diagnostic{filepath.ToSlash(path), 1, "file", "cannot read this path: " + fileError(walkErr)})
+			message := "cannot read this path: " + fileError(walkErr)
+			path = filepath.ToSlash(path)
+			diagnostics = append(diagnostics, Diagnostic{path, 1, "file", message})
 			return nil
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".git" {
+			if entry.Name() == ".git" || entry.Name() == ".superlexical" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -38,7 +49,8 @@ func readDocuments(root string) ([]document, []Diagnostic, error) {
 		}
 		path = filepath.ToSlash(path)
 		if !entry.Type().IsRegular() {
-			diagnostics = append(diagnostics, Diagnostic{path, 1, "", "Markdown must be a regular file, not a symbolic link"})
+			message := "Markdown must be a regular file, not a symbolic link"
+			diagnostics = append(diagnostics, Diagnostic{path, 1, "", message})
 			return nil
 		}
 		source, err := os.ReadFile(filename)

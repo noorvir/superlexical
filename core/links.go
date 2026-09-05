@@ -54,10 +54,33 @@ func parseMarkdown(source []byte, startLine int) ([]markdownLink, map[string]boo
 		destination = util.ResolveNumericReferences(destination)
 		destination = util.ResolveEntityNames(destination)
 		offset := max(node.Pos(), 0)
-		links = append(links, markdownLink{string(destination), startLine + lineNumber(source, offset) - 1})
+		line := startLine + lineNumber(source, offset) - 1
+		links = append(links, markdownLink{string(destination), line})
 		return ast.WalkContinue, nil
 	})
 	return links, headings
+}
+
+func checkLinks(root string, documents []document) []Diagnostic {
+	var diagnostics []Diagnostic
+	byPath := make(map[string]document, len(documents))
+	for _, doc := range documents {
+		byPath[doc.path] = doc
+	}
+
+	for _, doc := range documents {
+		for _, link := range doc.links {
+			message, err := checkLink(root, doc.path, link.destination, byPath)
+			if err != nil {
+				message = fmt.Sprintf("cannot check link %q: %s", link.destination, fileError(err))
+			}
+			if message == "" {
+				continue
+			}
+			diagnostics = append(diagnostics, Diagnostic{doc.path, link.line, "link", message})
+		}
+	}
+	return diagnostics
 }
 
 func checkLink(root, source, destination string, documents map[string]document) (string, error) {
@@ -66,7 +89,8 @@ func checkLink(root, source, destination string, documents map[string]document) 
 		return fmt.Sprintf("invalid URL %q: %s", destination, err), nil
 	}
 	if target.Scheme != "" || target.Host != "" {
-		if (strings.EqualFold(target.Scheme, "http") || strings.EqualFold(target.Scheme, "https")) && target.Hostname() == "" {
+		http := strings.EqualFold(target.Scheme, "http") || strings.EqualFold(target.Scheme, "https")
+		if http && target.Hostname() == "" {
 			return fmt.Sprintf("URL has no host: %q", destination), nil
 		}
 		if strings.EqualFold(target.Scheme, "file") {
@@ -78,14 +102,7 @@ func checkLink(root, source, destination string, documents map[string]document) 
 		return fmt.Sprintf("invalid local path: %q", destination), nil
 	}
 
-	resolved := source
-	if target.Path != "" {
-		if strings.HasPrefix(target.Path, "/") {
-			resolved = path.Clean(strings.TrimPrefix(target.Path, "/"))
-		} else {
-			resolved = path.Join(path.Dir(source), target.Path)
-		}
-	}
+	resolved := linkPath(source, target.Path)
 	if !filepath.IsLocal(filepath.FromSlash(resolved)) {
 		return fmt.Sprintf("link leaves the workspace: %q", destination), nil
 	}
@@ -111,14 +128,25 @@ func checkLink(root, source, destination string, documents map[string]document) 
 	if !info.Mode().IsRegular() {
 		return fmt.Sprintf("link target is not a regular file: %q", destination), nil
 	}
-	if strings.EqualFold(path.Ext(resolved), ".md") {
-		doc, exists := documents[filepath.ToSlash(relative)]
-		if !exists {
-			return fmt.Sprintf("Markdown target was not compiled: %q", destination), nil
-		}
-		if target.Fragment != "" && !doc.headings[target.Fragment] {
-			return fmt.Sprintf("heading does not exist: %q", destination), nil
-		}
+	if !strings.EqualFold(path.Ext(resolved), ".md") {
+		return "", nil
+	}
+	doc, exists := documents[filepath.ToSlash(relative)]
+	if !exists {
+		return fmt.Sprintf("Markdown target was not compiled: %q", destination), nil
+	}
+	if target.Fragment != "" && !doc.headings[target.Fragment] {
+		return fmt.Sprintf("heading does not exist: %q", destination), nil
 	}
 	return "", nil
+}
+
+func linkPath(source, target string) string {
+	if target == "" {
+		return source
+	}
+	if strings.HasPrefix(target, "/") {
+		return path.Clean(strings.TrimPrefix(target, "/"))
+	}
+	return path.Join(path.Dir(source), target)
 }

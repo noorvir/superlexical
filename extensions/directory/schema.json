@@ -5,7 +5,7 @@
   "required": ["@context", "@id", "@type", "name"],
   "properties": {
     "@context": {"const": "https://schema.org"},
-    "@id": {"type": "string", "format": "uri", "pattern": "^[^\\s]+$"},
+    "@id": {"type": "string", "format": "uri", "minLength": 21, "pattern": "^[^\\s]+$"},
     "@type": {"enum": ["Person", "Organization"]},
     "name": {"type": "string", "pattern": "\\S"}
   }

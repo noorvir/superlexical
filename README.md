@@ -12,11 +12,23 @@ Build the executable from the repository root:
 go build -o bin/superlexical ./cmd/superlexical
 ```
 
-Validate the included samples:
+Validate the included workspace directly with Go:
 
 ```sh
-./bin/superlexical validate ./core/testdata/valid
-./bin/superlexical validate ./core/testdata/invalid
+go run ./cmd/superlexical validate ./core/testdata/workspace
+```
+
+Run the executable from a workspace root:
+
+```sh
+superlexical validate .
+```
+
+Validate the single-schema samples:
+
+```sh
+./bin/superlexical validate --schema ./extensions/directory/schema.json ./core/testdata/valid
+./bin/superlexical validate --schema ./extensions/directory/schema.json ./core/testdata/invalid
 ```
 
 The valid sample passes. The invalid sample deliberately reports eight errors. The records use fictional people and organizations. The files live in `core/testdata`, the normal Go location for test data, and are checked by the automated tests. They do not need a registry.
@@ -31,15 +43,34 @@ people/bob.md:2: name: required field is missing; add it
 Use another schema, or keep validation running after edits:
 
 ```sh
-./bin/superlexical validate --schema ./core/schemas/directory.json ./core/testdata/valid
-./bin/superlexical validate --watch ./core/testdata/valid
+./bin/superlexical validate --schema ./extensions/directory/schema.json ./core/testdata/valid
+./bin/superlexical validate --watch ./core/testdata/workspace
 ```
 
-Flags go before the root path. Exit codes are `0` for valid data, `1` for document errors, and `2` for a command, schema, root-directory, or watcher setup failure. Validation errors go to stderr; successful checks go to stdout. `--help` shows usage.
+Flags go before the root path. Exit codes are `0` for valid data, `1` for configuration or document errors, and `2` for a command, schema, configuration-read, root-directory, or watcher setup failure. Validation errors go to stderr; successful checks go to stdout. `--help` shows usage.
 
 For an agent workflow, run `superlexical validate ROOT` after each completed group of edits and give its output back to the agent. A nonzero exit code means the changes have not passed validation. This command always checks the full directory, so it can find broken incoming links after a rename or deletion.
 
-Watch mode runs an initial validation, then uses native filesystem events to trigger another full check after 150 ms without events. It handles new subdirectories and atomic saves, and also watches the supplied schema file. It continues after validation errors. Ctrl+C stops it and returns the last validation status. A watcher failure stops with exit code `2`. Watch mode does not create a consistent filesystem snapshot; use the one-shot command after an agent finishes its edits when a final pass is required. Filesystems that do not supply native change events need the post-edit command instead.
+Watch mode runs an initial validation, then uses native filesystem events to trigger another full check after 150 ms without events. It handles new subdirectories and atomic saves, and also watches extension configuration changes and any supplied schema file. It continues after validation errors. Ctrl+C stops it and returns the last validation status. A watcher failure stops with exit code `2`. Watch mode does not create a consistent filesystem snapshot; use the one-shot command after an agent finishes its edits when a final pass is required. Filesystems that do not supply native change events need the post-edit command instead.
+
+## Workspace configuration
+
+The compiler reads `.superlexical/extensions.json` from the selected workspace root:
+
+```json
+{
+  "extensions": [
+    {
+      "name": "directory",
+      "dependencies": []
+    }
+  ]
+}
+```
+
+The `directory` extension uses its embedded schema for all Markdown files under `directory/`. No separate extension manifests, schema paths, or data-folder settings are used. Files outside that folder are not compiled. Assets can be linked from anywhere inside the workspace root. Links to Markdown outside the compiled folders report an error.
+
+The configuration requires an `extensions` array and each entry requires `name` and `dependencies`. An empty extensions array enables no record validation. Unknown extension names, duplicate entries, and nonempty dependencies produce errors. Configuration fields outside this format are rejected. A missing or unreadable configuration cannot pass validation. Configuration diagnostics identify the file and array entry; their line is the start of the file. Missing Directory folders also produce errors.
 
 ## Use the compiler
 
@@ -55,7 +86,7 @@ import (
 )
 
 func main() {
-    diagnostics, err := core.Compile("./directory", core.DirectorySchema)
+    diagnostics, err := core.CompileWorkspace(".")
     if err != nil {
         log.Fatal(err)
     }
@@ -68,11 +99,11 @@ func main() {
 }
 ```
 
-`Compile(root, schema)` accepts a directory path and JSON Schema bytes. To use another schema, read its JSON file with `os.ReadFile` and pass the bytes instead of `core.DirectorySchema`.
+`CompileWorkspace(root)` reads the extension configuration and checks enabled records. `Compile(root, schema)` checks one folder against supplied JSON Schema bytes. The Directory schema is available as `directory.Schema` from `superlexical/extensions/directory`. The `--schema` CLI option selects this single-folder mode and bypasses workspace configuration.
 
 A successful validation returns no diagnostics and no error. Invalid content returns diagnostics with a root-relative path, a 1-based line number, a field, and a message. Source lines come from the original YAML tree, including array items and quoted property names. Missing fields and alias contents point to the nearest enclosing source location. `Field` is a display label; dots in property names are retained, so it is not a machine-readable path. An unreadable document or link target is reported as a diagnostic, and other files are still checked. An unusable schema or root directory returns an error; callers must not treat that result as valid.
 
-The compiler checks all `.md` files recursively, including `.MD`. It skips `.git` directories. Every Markdown file in the selected root must have YAML front matter that passes the supplied schema. An empty directory is valid. Select the Directory folder to validate Directory records; do not pass a mixed workspace of unrelated notes with the Directory schema.
+The compiler checks all `.md` files recursively within each selected record folder, including `.MD`. It skips `.git` and `.superlexical` directories. Every compiled Markdown file must have YAML front matter that passes its schema. An existing empty record folder is valid. In single-schema mode, every Markdown file in the selected root is a record.
 
 The compiler reads and parses documents, validates records and IDs, then resolves links. It returns all independently detectable errors in that run. If a YAML block has a syntax error, its metadata cannot be checked further until that syntax is fixed; its readable Markdown body and other documents are still checked. A broken link, including a path through a regular file, produces a diagnostic without stopping the remaining checks.
 
@@ -87,18 +118,20 @@ Each record has four required fields. Extra fields are allowed:
 | Field | Rule |
 | --- | --- |
 | `@context` | Exactly `https://schema.org` |
-| `@id` | A nonempty absolute URI with no whitespace; unique in the root |
+| `@id` | An absolute URI of at least 21 characters, including its prefix, with no whitespace; unique in the root |
 | `@type` | `Person` or `Organization` |
 | `name` | A string with at least one non-whitespace character |
 
 These required fields are Superlexical rules. Schema.org itself does not impose them. The compiler does not fetch the context URL. Keep IDs unchanged when names or paths change; a single compilation can check uniqueness, but cannot check identity across revisions.
+
+Agents and UIs create IDs; the compiler never generates or rewrites them. Random IDs are recommended. The minimum length catches short labels but does not prove randomness or Nano ID use. Duplicate checks compare complete IDs across all records in one compilation, not across separate runs. Custom schemas define their own ID format and length rules.
 
 `directory/people/alice.md`:
 
 ```markdown
 ---
 "@context": https://schema.org
-"@id": person:alice
+"@id": person:zt507zg4MOyd_2TGcpFB0
 "@type": Person
 name: Alice
 ---
@@ -113,7 +146,7 @@ Works with [Acme](../organizations/acme.md#team).
 ```markdown
 ---
 "@context": https://schema.org
-"@id": organization:acme
+"@id": organization:DZO8p_bVF1ENdFAYHmxc7
 "@type": Organization
 name: Acme
 ---

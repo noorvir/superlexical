@@ -10,11 +10,12 @@ import (
 	"testing"
 
 	"superlexical/core"
+	"superlexical/extensions/directory"
 )
 
 func TestCompileDirectory(t *testing.T) {
 	root := workspace(t, map[string]string{
-		"people/alice.md": record("Person", "person:alice", "Alice") + `# Alice
+		"people/alice.md": record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice") + `# Alice
 
 [Employer](../organizations/acme.md#team)
 [Reference][acme]
@@ -26,10 +27,10 @@ func TestCompileDirectory(t *testing.T) {
 <https://example.com>
 
 ` + "`[example](missing.md)`\n\n```md\n[example](missing.md)\n```\n",
-		"organizations/acme.md": record("Organization", "organization:acme", "Acme") + "# Team\n",
+		"organizations/acme.md": record("Organization", "organization:DZO8p_bVF1ENdFAYHmxc7", "Acme") + "# Team\n",
 		"assets/logo.png":       "image",
 	})
-	diagnostics, err := core.Compile(root, core.DirectorySchema)
+	diagnostics, err := core.Compile(root, directory.Schema)
 	if err != nil || len(diagnostics) != 0 {
 		t.Fatalf("Compile = %v, %v", diagnostics, err)
 	}
@@ -37,7 +38,7 @@ func TestCompileDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = core.Compile(root, core.DirectorySchema)
+	_, err = core.Compile(root, directory.Schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +49,7 @@ func TestCompileDirectory(t *testing.T) {
 }
 
 func TestCompileMetadata(t *testing.T) {
-	valid := record("Person", "person:alice", "Alice")
+	valid := record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice")
 	tests := []struct {
 		name, source, field, message string
 		line                         int
@@ -58,15 +59,16 @@ func TestCompileMetadata(t *testing.T) {
 		{"invalid yaml", "---\nname: [Alice\n---\n", "frontmatter", "", 2},
 		{"duplicate yaml key", strings.Replace(valid, "name: Alice", "name: Alice\nname: Bob", 1), "frontmatter", "", 6},
 		{"missing context", strings.Replace(valid, "'@context': https://schema.org\n", "", 1), "@context", "required", 2},
-		{"missing id", strings.Replace(valid, "'@id': person:alice\n", "", 1), "@id", "required", 2},
+		{"missing id", strings.Replace(valid, "'@id': person:zt507zg4MOyd_2TGcpFB0\n", "", 1), "@id", "required", 2},
 		{"missing type", strings.Replace(valid, "'@type': Person\n", "", 1), "@type", "required", 2},
 		{"missing name", strings.Replace(valid, "name: Alice\n", "", 1), "name", "required", 2},
 		{"wrong type", strings.Replace(valid, "name: Alice", "name: 123", 1), "name", "expected string; found number", 5},
 		{"blank name", strings.Replace(valid, "name: Alice", "name: '  '", 1), "name", "cannot be empty", 5},
 		{"wrong context", strings.Replace(valid, "https://schema.org", "https://example.com", 1), "@context", "", 2},
 		{"unknown type", strings.Replace(valid, "Person", "Place", 1), "@type", "", 4},
-		{"invalid id", strings.Replace(valid, "person:alice", "Alice Smith", 1), "@id", "", 3},
-		{"relative id", strings.Replace(valid, "person:alice", "alice", 1), "@id", "uri", 3},
+		{"invalid id", strings.Replace(valid, "person:zt507zg4MOyd_2TGcpFB0", "Alice Smith with a long name", 1), "@id", "", 3},
+		{"relative id", strings.Replace(valid, "person:zt507zg4MOyd_2TGcpFB0", "zt507zg4MOyd_2TGcpFB0x", 1), "@id", "uri", 3},
+		{"short id", strings.Replace(valid, "person:zt507zg4MOyd_2TGcpFB0", "person:alice", 1), "@id", "at least 21 characters; found 12", 3},
 		{"invalid utf8", valid + "\xff", "frontmatter", "UTF-8", 1},
 		{"multiple yaml documents", "---\nname: Alice\n...\nname: Bob\n---\n", "frontmatter", "", 2},
 		{"sequence metadata", "---\n- Alice\n---\n", "frontmatter", "mapping", 2},
@@ -75,7 +77,7 @@ func TestCompileMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := workspace(t, map[string]string{"alice.md": tt.source})
-			diagnostics, err := core.Compile(root, core.DirectorySchema)
+			diagnostics, err := core.Compile(root, directory.Schema)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -92,12 +94,30 @@ func TestCompileMetadata(t *testing.T) {
 	}
 }
 
+func TestCompileIDLength(t *testing.T) {
+	for _, length := range []int{20, 21} {
+		id := "person:" + strings.Repeat("a", length-len("person:"))
+		root := workspace(t, map[string]string{"alice.md": record("Person", id, "Alice")})
+		diagnostics, err := core.Compile(root, directory.Schema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if length == 21 {
+			if len(diagnostics) != 0 {
+				t.Fatalf("minimum-length ID rejected: %v", diagnostics)
+			}
+		} else if len(diagnostics) != 1 || diagnostics[0].Field != "@id" || !strings.Contains(diagnostics[0].Message, "at least 21 characters; found 20") {
+			t.Fatalf("expected short ID diagnostic, got %v", diagnostics)
+		}
+	}
+}
+
 func TestCompileDuplicateIDs(t *testing.T) {
 	root := workspace(t, map[string]string{
-		"a.md": record("Person", "person:alice", "Alice"),
-		"b.md": record("Person", "person:alice", "Alice Jones"),
+		"a.md": record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice"),
+		"b.md": record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice Jones"),
 	})
-	diagnostics, err := core.Compile(root, core.DirectorySchema)
+	diagnostics, err := core.Compile(root, directory.Schema)
 	if err != nil || len(diagnostics) != 1 || diagnostics[0].Field != "@id" || diagnostics[0].Line != 3 || !strings.Contains(diagnostics[0].Message, "a.md") {
 		t.Fatalf("Compile = %v, %v", diagnostics, err)
 	}
@@ -136,13 +156,13 @@ func TestCompileLinks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := workspace(t, map[string]string{
-				"alice.md":      record("Person", "person:alice", "Alice") + "# Alice\n\n" + tt.body + "\n",
-				"nested/bob.md": record("Person", "person:bob", "Bob") + "# Hello World\n\n# Hello World\n",
-				"a b.md":        record("Person", "person:space", "Space") + "# Hello\n",
-				"a(b).md":       record("Person", "person:bracket", "Bracket"),
-				"a&b.md":        record("Person", "person:ampersand", "Ampersand"),
+				"alice.md":      record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice") + "# Alice\n\n" + tt.body + "\n",
+				"nested/bob.md": record("Person", "person:PkzrP9vKxncFbh78ydJOc", "Bob") + "# Hello World\n\n# Hello World\n",
+				"a b.md":        record("Person", "person:4CcWQiPT6wzl1CaoqNKPQ", "Space") + "# Hello\n",
+				"a(b).md":       record("Person", "person:68YDbHOw_ftdD_S18kJLM", "Bracket"),
+				"a&b.md":        record("Person", "person:gZq34KLSI5rG6pSt6USDW", "Ampersand"),
 			})
-			diagnostics, err := core.Compile(root, core.DirectorySchema)
+			diagnostics, err := core.Compile(root, directory.Schema)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -178,34 +198,34 @@ func TestCompileOperationalErrors(t *testing.T) {
 			t.Fatal("expected schema error")
 		}
 	}
-	if _, err := core.Compile(filepath.Join(root, "missing"), core.DirectorySchema); err == nil {
+	if _, err := core.Compile(filepath.Join(root, "missing"), directory.Schema); err == nil {
 		t.Fatal("expected root error")
 	}
 }
 
 func TestCompileSymlinks(t *testing.T) {
-	outside := workspace(t, map[string]string{"outside.md": record("Person", "person:outside", "Outside")})
-	root := workspace(t, map[string]string{"alice.md": record("Person", "person:alice", "Alice") + "[Outside](escape/outside.md)\n"})
+	outside := workspace(t, map[string]string{"outside.md": record("Person", "person:JSB0O1wvuZxClXgtZrfJn", "Outside")})
+	root := workspace(t, map[string]string{"alice.md": record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice") + "[Outside](escape/outside.md)\n"})
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
 		t.Fatal(err)
 	}
-	diagnostics, err := core.Compile(root, core.DirectorySchema)
+	diagnostics, err := core.Compile(root, directory.Schema)
 	if err != nil || len(diagnostics) != 1 || !strings.Contains(diagnostics[0].Message, "leaves the workspace") {
 		t.Fatalf("Compile = %v, %v", diagnostics, err)
 	}
 }
 
 func TestCompileLineEndingsAndOrder(t *testing.T) {
-	content := record("Person", "person:alice", "Alice") + "[Missing](missing.md)\n"
+	content := record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice") + "[Missing](missing.md)\n"
 	root := workspace(t, map[string]string{
 		"a.md": "\xef\xbb\xbf" + strings.ReplaceAll(content, "\n", "\r\n"),
-		"z.md": strings.ReplaceAll(content, "person:alice", "person:bob"),
+		"z.md": strings.ReplaceAll(content, "person:zt507zg4MOyd_2TGcpFB0", "person:PkzrP9vKxncFbh78ydJOc"),
 	})
-	first, err := core.Compile(root, core.DirectorySchema)
+	first, err := core.Compile(root, directory.Schema)
 	if err != nil || len(first) != 2 || first[0].Path != "a.md" || first[0].Line != 7 || first[1].Path != "z.md" {
 		t.Fatalf("Compile = %v, %v", first, err)
 	}
-	second, err := core.Compile(root, core.DirectorySchema)
+	second, err := core.Compile(root, directory.Schema)
 	if err != nil || !reflect.DeepEqual(first, second) {
 		t.Fatalf("unstable diagnostics: %v, %v", second, err)
 	}
@@ -232,11 +252,11 @@ func record(kind, id, name string) string {
 
 func TestCompileContinuesAfterBrokenPath(t *testing.T) {
 	root := workspace(t, map[string]string{
-		"a.md":      record("Person", "person:alice", "123") + "[Asset](asset.txt/child.md)\n",
-		"b.md":      record("Person", "person:bob", "Bob") + "[Missing](missing.md)\n",
+		"a.md":      record("Person", "person:zt507zg4MOyd_2TGcpFB0", "123") + "[Asset](asset.txt/child.md)\n",
+		"b.md":      record("Person", "person:PkzrP9vKxncFbh78ydJOc", "Bob") + "[Missing](missing.md)\n",
 		"asset.txt": "asset",
 	})
-	got, err := core.Compile(root, core.DirectorySchema)
+	got, err := core.Compile(root, directory.Schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,11 +339,11 @@ func TestCompileSchemaLocations(t *testing.T) {
 }
 
 func TestCompileSamples(t *testing.T) {
-	valid, err := core.Compile("testdata/valid", core.DirectorySchema)
+	valid, err := core.Compile("testdata/valid", directory.Schema)
 	if err != nil || len(valid) != 0 {
 		t.Fatalf("valid sample: %v, %v", valid, err)
 	}
-	diagnostics, err := core.Compile("testdata/invalid", core.DirectorySchema)
+	diagnostics, err := core.Compile("testdata/invalid", directory.Schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,8 +362,8 @@ func TestCompileSamples(t *testing.T) {
 
 func TestCompileContinuesAfterUnreadableFile(t *testing.T) {
 	root := workspace(t, map[string]string{
-		"a.md": record("Person", "person:alice", "Alice"),
-		"b.md": record("Person", "person:bob", "42"),
+		"a.md": record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice"),
+		"b.md": record("Person", "person:PkzrP9vKxncFbh78ydJOc", "42"),
 	})
 	path := filepath.Join(root, "a.md")
 	if err := os.Chmod(path, 0000); err != nil {
@@ -353,7 +373,7 @@ func TestCompileContinuesAfterUnreadableFile(t *testing.T) {
 	if _, err := os.ReadFile(path); err == nil {
 		t.Skip("this environment can read files with no read permissions")
 	}
-	diagnostics, err := core.Compile(root, core.DirectorySchema)
+	diagnostics, err := core.Compile(root, directory.Schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +384,7 @@ func TestCompileContinuesAfterUnreadableFile(t *testing.T) {
 
 func TestCompileReportsAllMissingFields(t *testing.T) {
 	root := workspace(t, map[string]string{"empty.md": "---\n{}\n---\n"})
-	diagnostics, err := core.Compile(root, core.DirectorySchema)
+	diagnostics, err := core.Compile(root, directory.Schema)
 	if err != nil {
 		t.Fatal(err)
 	}

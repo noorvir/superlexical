@@ -12,13 +12,13 @@ import (
 func TestValidateSamples(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	valid := filepath.FromSlash("../../core/testdata/valid")
-	if status := run([]string{"validate", valid}, &stdout, &stderr); status != 0 || stderr.Len() != 0 || stdout.String() != "Valid: "+valid+"\n" {
+	if status := run([]string{"validate", "--schema", "../../extensions/directory/schema.json", valid}, &stdout, &stderr); status != 0 || stderr.Len() != 0 || stdout.String() != "Valid: "+valid+"\n" {
 		t.Fatalf("status=%d, stdout=%q, stderr=%q", status, stdout.String(), stderr.String())
 	}
 	stdout.Reset()
 	stderr.Reset()
 	invalid := filepath.FromSlash("../../core/testdata/invalid")
-	status := run([]string{"validate", invalid}, &stdout, &stderr)
+	status := run([]string{"validate", "--schema", "../../extensions/directory/schema.json", invalid}, &stdout, &stderr)
 	diagnostics, err := os.ReadFile("../../core/testdata/invalid.errors.txt")
 	if err != nil {
 		t.Fatal(err)
@@ -38,6 +38,14 @@ func TestValidateCustomSchema(t *testing.T) {
 	status := run([]string{"validate", "--schema", schema, "../../core/testdata/valid"}, &stdout, &stderr)
 	if status != 1 || strings.Count(stderr.String(), "extra: required field is missing; add it") != 3 || !strings.Contains(stderr.String(), "3 errors") {
 		t.Fatalf("status=%d, stderr=%q", status, stderr.String())
+	}
+}
+
+func TestValidateWorkspace(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	root := "../../core/testdata/workspace"
+	if status := run([]string{"validate", root}, &stdout, &stderr); status != 0 || stderr.Len() != 0 || stdout.String() != "Valid: "+root+"\n" {
+		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 	}
 }
 
