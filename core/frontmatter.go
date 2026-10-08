@@ -16,26 +16,33 @@ import (
 func parseFrontmatter(source []byte) (frontmatter, *Diagnostic) {
 	source = bytes.TrimPrefix(source, []byte{0xef, 0xbb, 0xbf})
 	metadata := frontmatter{body: source, bodyLine: 1}
+
 	if !utf8.Valid(source) {
 		return metadata, &Diagnostic{Line: 1, Field: "frontmatter", Message: "file is not valid UTF-8"}
 	}
+
 	lines := bytes.SplitAfter(source, []byte{'\n'})
 	if strings.TrimRight(string(lines[0]), "\r\n") != "---" {
 		message := "missing YAML front matter; start the file with a --- block"
 		return metadata, &Diagnostic{Line: 1, Field: "frontmatter", Message: message}
 	}
+
 	start := len(lines[0])
 	end := start
+
 	for _, line := range lines[1:] {
 		if strings.TrimRight(string(line), "\r\n") == "---" {
 			break
 		}
+
 		end += len(line)
 	}
+
 	if end == len(source) {
 		message := "missing closing front matter delimiter; add --- after the YAML fields"
 		return metadata, &Diagnostic{Line: 1, Field: "frontmatter", Message: message}
 	}
+
 	bodyStart := end + len(lines[lineNumber(source, end)-1])
 	metadata.body = source[bodyStart:]
 	metadata.bodyLine = lineNumber(source, bodyStart)
@@ -45,18 +52,21 @@ func parseFrontmatter(source []byte) (frontmatter, *Diagnostic) {
 	if err != nil {
 		return metadata, yamlDiagnostic(err)
 	}
+
 	if len(file.Docs) != 1 || file.Docs[0].Body == nil {
 		return metadata, &Diagnostic{Line: 2, Field: "frontmatter", Message: "front matter must be one YAML mapping"}
 	}
 	if file.Docs[0].Body.Type() != ast.MappingType {
 		return metadata, &Diagnostic{Line: 2, Field: "frontmatter", Message: "front matter must be one YAML mapping"}
 	}
+
 	metadata.syntax = file.Docs[0].Body
 	metadata.json, err = metadataJSON(metadata.syntax)
 	if err != nil {
 		metadata.json = nil
 		return metadata, yamlDiagnostic(err)
 	}
+
 	return metadata, nil
 }
 
@@ -69,6 +79,7 @@ func yamlDiagnostic(err error) *Diagnostic {
 		line = yamlError.GetToken().Position.Line + 1
 		message = yamlError.GetMessage()
 	}
+
 	message = "invalid YAML: " + message + "; fix the syntax before checking these fields"
 	return &Diagnostic{Line: line, Field: "frontmatter", Message: message}
 }
@@ -79,6 +90,7 @@ func metadataJSON(node ast.Node) ([]byte, error) {
 	if err := decoder.DecodeFromNode(node, &value); err != nil {
 		return nil, err
 	}
+
 	return yaml.MarshalWithOptions(value, yaml.JSON())
 }
 
@@ -94,6 +106,7 @@ type frontmatter struct {
 func (m frontmatter) lineAt(path []string) int {
 	node := m.syntax
 	line := 2
+
 	for _, segment := range path {
 	unwrap:
 		for {
@@ -106,20 +119,24 @@ func (m frontmatter) lineAt(path []string) int {
 				break unwrap
 			}
 		}
+
 		switch current := node.(type) {
 		case ast.MapNode:
 			entries := current.MapRange()
 			found := false
+
 			for entries.Next() {
 				key, ok := entries.Key().(ast.ScalarNode)
 				if !ok || fmt.Sprint(key.GetValue()) != segment {
 					continue
 				}
+
 				line = entries.Key().GetToken().Position.Line + 1
 				node = entries.Value()
 				found = true
 				break
 			}
+
 			if !found {
 				return line
 			}
@@ -128,11 +145,13 @@ func (m frontmatter) lineAt(path []string) int {
 			if err != nil || index < 0 || index >= len(current.Values) {
 				return line
 			}
+
 			node = current.Values[index]
 			line = node.GetToken().Position.Line + 1
 		default:
 			return line
 		}
 	}
+
 	return line
 }

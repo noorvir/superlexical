@@ -18,10 +18,12 @@ func Compile(root string, schema []byte) ([]Diagnostic, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	root, err = workspaceRoot(root)
 	if err != nil {
 		return nil, err
 	}
+
 	return compile(root, []scope{{path: ".", schema: compiled}}, nil), nil
 }
 
@@ -30,14 +32,17 @@ func workspaceRoot(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	root, err = filepath.EvalSymlinks(root)
 	if err != nil {
 		return "", err
 	}
+
 	info, err := os.Stat(root)
 	if err != nil {
 		return "", err
 	}
+
 	if !info.IsDir() {
 		return "", fmt.Errorf("root is not a directory: %s", root)
 	}
@@ -48,12 +53,14 @@ func workspaceRoot(root string) (string, error) {
 func compile(root string, scopes []scope, diagnostics []Diagnostic) []Diagnostic {
 	var documents []document
 	ids := make(map[string]string)
+
 	for _, scope := range scopes {
 		batch, issues, err := readDocuments(root, scope.path)
 		diagnostics = append(diagnostics, issues...)
 		if err != nil {
 			diagnostics = append(diagnostics, Diagnostic{scope.path, 1, "file", "cannot read record folder: " + fileError(err)})
 		}
+
 		recordIssues := validateRecords(batch, scope.schema, ids)
 		diagnostics = append(diagnostics, recordIssues...)
 		documents = append(documents, batch...)
@@ -61,6 +68,7 @@ func compile(root string, scopes []scope, diagnostics []Diagnostic) []Diagnostic
 
 	linkIssues := checkLinks(root, documents)
 	diagnostics = append(diagnostics, linkIssues...)
+
 	slices.SortFunc(diagnostics, func(a, b Diagnostic) int {
 		return cmp.Or(
 			cmp.Compare(a.Path, b.Path),
@@ -69,6 +77,7 @@ func compile(root string, scopes []scope, diagnostics []Diagnostic) []Diagnostic
 			cmp.Compare(a.Message, b.Message),
 		)
 	})
+
 	return diagnostics
 }
 
@@ -86,6 +95,7 @@ func (d Diagnostic) String() string {
 	if d.Field == "" {
 		return fmt.Sprintf("%s:%d: %s", d.Path, d.Line, d.Message)
 	}
+
 	return fmt.Sprintf("%s:%d: %s: %s", d.Path, d.Line, d.Field, d.Message)
 }
 

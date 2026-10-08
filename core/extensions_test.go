@@ -17,10 +17,12 @@ func TestCompileWorkspace(t *testing.T) {
 		"assets/alice.png":                "image",
 		"README.md":                       "# Unowned note\nNo record metadata here.\n",
 	})
+
 	diagnostics, err := core.CompileWorkspace(root)
 	if err != nil || len(diagnostics) != 0 {
 		t.Fatalf("CompileWorkspace = %v, %v", diagnostics, err)
 	}
+
 	// Independent configuration and record errors must all reach the caller.
 	if err := os.WriteFile(filepath.Join(root, ".superlexical/extensions.json"), []byte(`{"extensions":[{"name":"directory","dependencies":["photos"]},{"name":"sharing","dependencies":[]}]}`), 0600); err != nil {
 		t.Fatal(err)
@@ -32,6 +34,7 @@ func TestCompileWorkspace(t *testing.T) {
 	if err != nil || len(diagnostics) != 5 {
 		t.Fatalf("CompileWorkspace = %v, %v", diagnostics, err)
 	}
+
 	for i, message := range []string{"dependencies are not supported", "unsupported extension", "duplicate ID", "expected string", "link target does not exist"} {
 		if !strings.Contains(diagnostics[i].Message, message) {
 			t.Errorf("diagnostic %d = %v; want %q", i, diagnostics[i], message)
@@ -56,6 +59,7 @@ func TestCompileWorkspaceConfiguration(t *testing.T) {
 				".superlexical/extensions.json": tt.config,
 				"directory/alice.md":            record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice"),
 			})
+
 			diagnostics, err := core.CompileWorkspace(root)
 			if err != nil || len(diagnostics) != 1 || diagnostics[0].Path != ".superlexical/extensions.json" || !strings.Contains(diagnostics[0].Message, tt.message) {
 				t.Fatalf("CompileWorkspace = %v, %v", diagnostics, err)
@@ -70,6 +74,7 @@ func TestCompileWorkspaceFolders(t *testing.T) {
 		t.Fatal("missing configuration passed")
 	}
 	root = workspace(t, map[string]string{".superlexical/extensions.json": `{"extensions":[{"name":"directory","dependencies":[]}]}`})
+
 	for _, kind := range []string{"missing", "file", "symlink"} {
 		folder := filepath.Join(root, "directory")
 		switch kind {
@@ -85,14 +90,17 @@ func TestCompileWorkspaceFolders(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+
 		diagnostics, err := core.CompileWorkspace(root)
 		if err != nil || len(diagnostics) != 1 || diagnostics[0].Path != "directory" {
 			t.Fatalf("%s: CompileWorkspace = %v, %v", kind, diagnostics, err)
 		}
 	}
+
 	if err := os.WriteFile(filepath.Join(root, ".superlexical/extensions.json"), []byte(`{"extensions":[]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
+
 	if diagnostics, err := core.CompileWorkspace(root); err != nil || len(diagnostics) != 0 {
 		t.Fatalf("empty extension list = %v, %v", diagnostics, err)
 	}

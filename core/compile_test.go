@@ -30,14 +30,17 @@ func TestCompileDirectory(t *testing.T) {
 		"organizations/acme.md": record("Organization", "organization:DZO8p_bVF1ENdFAYHmxc7", "Acme") + "# Team\n",
 		"assets/logo.png":       "image",
 	})
+
 	diagnostics, err := core.Compile(root, directory.Schema)
 	if err != nil || len(diagnostics) != 0 {
 		t.Fatalf("Compile = %v, %v", diagnostics, err)
 	}
+
 	before, err := os.ReadFile(filepath.Join(root, "people/alice.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	_, err = core.Compile(root, directory.Schema)
 	if err != nil {
 		t.Fatal(err)
@@ -74,21 +77,26 @@ func TestCompileMetadata(t *testing.T) {
 		{"sequence metadata", "---\n- Alice\n---\n", "frontmatter", "mapping", 2},
 		{"empty metadata", "---\n---\n", "frontmatter", "mapping", 2},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := workspace(t, map[string]string{"alice.md": tt.source})
+
 			diagnostics, err := core.Compile(root, directory.Schema)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if len(diagnostics) != 1 {
 				t.Fatalf("expected one diagnostic, got %v", diagnostics)
 			}
+
 			for _, d := range diagnostics {
 				if d.Path == "alice.md" && d.Field == tt.field && d.Line == tt.line && strings.Contains(d.Message, tt.message) {
 					return
 				}
 			}
+
 			t.Fatalf("missing expected diagnostic for %s at line %d: %v", tt.field, tt.line, diagnostics)
 		})
 	}
@@ -98,10 +106,12 @@ func TestCompileIDLength(t *testing.T) {
 	for _, length := range []int{20, 21} {
 		id := "person:" + strings.Repeat("a", length-len("person:"))
 		root := workspace(t, map[string]string{"alice.md": record("Person", id, "Alice")})
+
 		diagnostics, err := core.Compile(root, directory.Schema)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if length == 21 {
 			if len(diagnostics) != 0 {
 				t.Fatalf("minimum-length ID rejected: %v", diagnostics)
@@ -117,6 +127,7 @@ func TestCompileDuplicateIDs(t *testing.T) {
 		"a.md": record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice"),
 		"b.md": record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice Jones"),
 	})
+
 	diagnostics, err := core.Compile(root, directory.Schema)
 	if err != nil || len(diagnostics) != 1 || diagnostics[0].Field != "@id" || diagnostics[0].Line != 3 || !strings.Contains(diagnostics[0].Message, "a.md") {
 		t.Fatalf("Compile = %v, %v", diagnostics, err)
@@ -153,6 +164,7 @@ func TestCompileLinks(t *testing.T) {
 		{"invalid URL", "[Invalid](https://example.com/%zz)", false},
 		{"missing host", "[Invalid](https:/example.com)", false},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := workspace(t, map[string]string{
@@ -162,21 +174,26 @@ func TestCompileLinks(t *testing.T) {
 				"a(b).md":       record("Person", "person:68YDbHOw_ftdD_S18kJLM", "Bracket"),
 				"a&b.md":        record("Person", "person:gZq34KLSI5rG6pSt6USDW", "Ampersand"),
 			})
+
 			diagnostics, err := core.Compile(root, directory.Schema)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if tt.valid {
 				if len(diagnostics) != 0 {
 					t.Fatalf("unexpected diagnostics: %v", diagnostics)
 				}
+
 				return
 			}
+
 			for _, d := range diagnostics {
 				if d.Path == "alice.md" && d.Field == "link" && d.Line == 9 {
 					return
 				}
 			}
+
 			t.Fatalf("missing link diagnostic at line 9: %v", diagnostics)
 		})
 	}
@@ -198,6 +215,7 @@ func TestCompileOperationalErrors(t *testing.T) {
 			t.Fatal("expected schema error")
 		}
 	}
+
 	if _, err := core.Compile(filepath.Join(root, "missing"), directory.Schema); err == nil {
 		t.Fatal("expected root error")
 	}
@@ -209,6 +227,7 @@ func TestCompileSymlinks(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
 		t.Fatal(err)
 	}
+
 	diagnostics, err := core.Compile(root, directory.Schema)
 	if err != nil || len(diagnostics) != 1 || !strings.Contains(diagnostics[0].Message, "leaves the workspace") {
 		t.Fatalf("Compile = %v, %v", diagnostics, err)
@@ -225,6 +244,7 @@ func TestCompileLineEndingsAndOrder(t *testing.T) {
 	if err != nil || len(first) != 2 || first[0].Path != "a.md" || first[0].Line != 7 || first[1].Path != "z.md" {
 		t.Fatalf("Compile = %v, %v", first, err)
 	}
+
 	second, err := core.Compile(root, directory.Schema)
 	if err != nil || !reflect.DeepEqual(first, second) {
 		t.Fatalf("unstable diagnostics: %v, %v", second, err)
@@ -233,7 +253,9 @@ func TestCompileLineEndingsAndOrder(t *testing.T) {
 
 func workspace(t *testing.T, files map[string]string) string {
 	t.Helper()
+
 	root := t.TempDir()
+
 	for name, content := range files {
 		filename := filepath.Join(root, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
@@ -243,6 +265,7 @@ func workspace(t *testing.T, files map[string]string) string {
 			t.Fatal(err)
 		}
 	}
+
 	return root
 }
 
@@ -260,6 +283,7 @@ func TestCompileContinuesAfterBrokenPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	want := []core.Diagnostic{
 		{Path: "a.md", Line: 5, Field: "name", Message: "expected string; found number"},
 		{Path: "a.md", Line: 7, Field: "link", Message: `link target does not exist: "asset.txt/child.md"`},
@@ -324,6 +348,7 @@ func TestCompileSchemaLocations(t *testing.T) {
 			},
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := workspace(t, map[string]string{"record.md": tt.source})
@@ -331,6 +356,7 @@ func TestCompileSchemaLocations(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("diagnostics = %#v, want %#v", got, tt.want)
 			}
@@ -347,14 +373,17 @@ func TestCompileSamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var actual strings.Builder
 	for _, diagnostic := range diagnostics {
 		fmt.Fprintln(&actual, diagnostic)
 	}
+
 	expected, err := os.ReadFile("testdata/invalid.errors.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if actual.String() != string(expected) {
 		t.Fatalf("diagnostics:\n%s\nwant:\n%s", actual.String(), expected)
 	}
@@ -365,18 +394,23 @@ func TestCompileContinuesAfterUnreadableFile(t *testing.T) {
 		"a.md": record("Person", "person:zt507zg4MOyd_2TGcpFB0", "Alice"),
 		"b.md": record("Person", "person:PkzrP9vKxncFbh78ydJOc", "42"),
 	})
+
 	path := filepath.Join(root, "a.md")
 	if err := os.Chmod(path, 0000); err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() { os.Chmod(path, 0600) })
+
 	if _, err := os.ReadFile(path); err == nil {
 		t.Skip("this environment can read files with no read permissions")
 	}
+
 	diagnostics, err := core.Compile(root, directory.Schema)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(diagnostics) != 2 || diagnostics[0].Path != "a.md" || diagnostics[0].Field != "file" || !strings.Contains(diagnostics[0].Message, "cannot read file") || diagnostics[1].Path != "b.md" || diagnostics[1].Field != "name" {
 		t.Fatalf("expected both file and schema errors: %v", diagnostics)
 	}
@@ -384,10 +418,12 @@ func TestCompileContinuesAfterUnreadableFile(t *testing.T) {
 
 func TestCompileReportsAllMissingFields(t *testing.T) {
 	root := workspace(t, map[string]string{"empty.md": "---\n{}\n---\n"})
+
 	diagnostics, err := core.Compile(root, directory.Schema)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	want := []core.Diagnostic{
 		{Path: "empty.md", Line: 2, Field: "@context", Message: "required field is missing; add it"},
 		{Path: "empty.md", Line: 2, Field: "@id", Message: "required field is missing; add it"},

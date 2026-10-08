@@ -14,16 +14,19 @@ import (
 
 func validateRecords(documents []document, schema *jsonschema.Schema, ids map[string]string) []Diagnostic {
 	var diagnostics []Diagnostic
+
 	for _, doc := range documents {
 		if doc.metadata.json == nil {
 			continue
 		}
+
 		value, err := jsonschema.UnmarshalJSON(bytes.NewReader(doc.metadata.json))
 		if err != nil {
 			message := "cannot read front matter as JSON: " + err.Error()
 			diagnostics = append(diagnostics, Diagnostic{doc.path, 2, "frontmatter", message})
 			continue
 		}
+
 		if err := schema.Validate(value); err != nil {
 			var failure *jsonschema.ValidationError
 			if !errors.As(err, &failure) {
@@ -31,6 +34,7 @@ func validateRecords(documents []document, schema *jsonschema.Schema, ids map[st
 				diagnostics = append(diagnostics, Diagnostic{doc.path, 2, "frontmatter", message})
 				continue
 			}
+
 			diagnostics = append(diagnostics, schemaDiagnostics(doc, failure)...)
 		}
 
@@ -40,15 +44,18 @@ func validateRecords(documents []document, schema *jsonschema.Schema, ids map[st
 		if err := json.Unmarshal(doc.metadata.json, &record); err != nil || record.ID == "" {
 			continue
 		}
+
 		previous, exists := ids[record.ID]
 		if !exists {
 			ids[record.ID] = doc.path
 			continue
 		}
+
 		line := doc.metadata.lineAt([]string{"@id"})
 		message := fmt.Sprintf("duplicate ID %q; first declared in %s", record.ID, previous)
 		diagnostics = append(diagnostics, Diagnostic{doc.path, line, "@id", message})
 	}
+
 	return diagnostics
 }
 
@@ -58,8 +65,10 @@ func schemaDiagnostics(doc document, failure *jsonschema.ValidationError) []Diag
 		for _, cause := range failure.Causes {
 			diagnostics = append(diagnostics, schemaDiagnostics(doc, cause)...)
 		}
+
 		return diagnostics
 	}
+
 	location := failure.InstanceLocation
 	switch detail := failure.ErrorKind.(type) {
 	case *kind.Required:
@@ -83,6 +92,7 @@ func schemaDiagnostics(doc document, failure *jsonschema.ValidationError) []Diag
 		message := schemaMessage(failure)
 		diagnostics = append(diagnostics, Diagnostic{doc.path, line, field, message})
 	}
+
 	return diagnostics
 }
 
@@ -100,6 +110,7 @@ func schemaMessage(failure *jsonschema.ValidationError) string {
 			return "value must not be empty or contain whitespace"
 		}
 	}
+
 	output := failure.BasicOutput()
 	return output.Error.String()
 }
@@ -109,15 +120,18 @@ func compileSchema(schema []byte) (*jsonschema.Schema, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read schema: %w", err)
 	}
+
 	compiler := jsonschema.NewCompiler()
 	compiler.DefaultDraft(jsonschema.Draft7)
 	compiler.AssertFormat()
 	if err := compiler.AddResource("urn:superlexical:schema", definition); err != nil {
 		return nil, fmt.Errorf("load schema: %w", err)
 	}
+
 	compiled, err := compiler.Compile("urn:superlexical:schema")
 	if err != nil {
 		return nil, fmt.Errorf("compile schema: %w", err)
 	}
+
 	return compiled, nil
 }

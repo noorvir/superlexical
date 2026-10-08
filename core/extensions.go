@@ -32,10 +32,12 @@ func CompileWorkspace(root string) ([]Diagnostic, error) {
 		issue := extensionDiagnostic("extensions", err.Error())
 		return []Diagnostic{issue}, nil
 	}
+
 	scopes, diagnostics, err := resolveExtensions(extensions)
 	if err != nil {
 		return nil, err
 	}
+
 	return compile(root, scopes, diagnostics), nil
 }
 
@@ -50,17 +52,21 @@ func decodeExtensions(source []byte) ([]extension, error) {
 	var config struct {
 		Extensions []extension `json:"extensions"`
 	}
+
 	decoder := json.NewDecoder(bytes.NewReader(source))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&config); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
+
 	if err := decoder.Decode(new(json.RawMessage)); err != io.EOF {
 		return nil, fmt.Errorf("configuration must contain one JSON object")
 	}
+
 	if config.Extensions == nil {
 		return nil, fmt.Errorf("extensions must be an array; use [] to enable none")
 	}
+
 	return config.Extensions, nil
 }
 
@@ -68,6 +74,7 @@ func resolveExtensions(extensions []extension) ([]scope, []Diagnostic, error) {
 	var scopes []scope
 	var diagnostics []Diagnostic
 	seen := make(map[string]bool)
+
 	for i, extension := range extensions {
 		field := fmt.Sprintf("extensions[%d]", i)
 		if extension.Dependencies == nil {
@@ -77,25 +84,30 @@ func resolveExtensions(extensions []extension) ([]scope, []Diagnostic, error) {
 			issue := extensionDiagnostic(field+".dependencies", "extension dependencies are not supported; use []")
 			diagnostics = append(diagnostics, issue)
 		}
+
 		if extension.Name != "directory" {
 			message := fmt.Sprintf("unsupported extension %q; expected directory", extension.Name)
 			issue := extensionDiagnostic(field+".name", message)
 			diagnostics = append(diagnostics, issue)
 			continue
 		}
+
 		if seen[extension.Name] {
 			message := "extension is listed more than once; remove the duplicate"
 			issue := extensionDiagnostic(field+".name", message)
 			diagnostics = append(diagnostics, issue)
 			continue
 		}
+
 		seen[extension.Name] = true
 		compiled, err := compileSchema(directory.Schema)
 		if err != nil {
 			return nil, nil, fmt.Errorf("Directory schema: %w", err)
 		}
+
 		scopes = append(scopes, scope{path: "directory", schema: compiled})
 	}
+
 	return scopes, diagnostics, nil
 }
 
