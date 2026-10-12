@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
@@ -33,7 +34,7 @@ func CompileWorkspace(root string) ([]Diagnostic, error) {
 		return []Diagnostic{issue}, nil
 	}
 
-	scopes, diagnostics, err := resolveExtensions(extensions)
+	scopes, diagnostics, err := resolveExtensions(root, extensions)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +71,7 @@ func decodeExtensions(source []byte) ([]extension, error) {
 	return config.Extensions, nil
 }
 
-func resolveExtensions(extensions []extension) ([]scope, []Diagnostic, error) {
+func resolveExtensions(root string, extensions []extension) ([]scope, []Diagnostic, error) {
 	var scopes []scope
 	var diagnostics []Diagnostic
 	seen := make(map[string]bool)
@@ -85,8 +86,8 @@ func resolveExtensions(extensions []extension) ([]scope, []Diagnostic, error) {
 			diagnostics = append(diagnostics, issue)
 		}
 
-		if extension.Name != "directory" {
-			message := fmt.Sprintf("unsupported extension %q; expected directory", extension.Name)
+		if !slices.Contains([]string{"directory", "lists", "wiki"}, extension.Name) {
+			message := fmt.Sprintf("unsupported extension %q; expected directory, lists, or wiki", extension.Name)
 			issue := extensionDiagnostic(field+".name", message)
 			diagnostics = append(diagnostics, issue)
 			continue
@@ -100,20 +101,42 @@ func resolveExtensions(extensions []extension) ([]scope, []Diagnostic, error) {
 		}
 
 		seen[extension.Name] = true
-		compiled, err := compileSchema(directory.Schema)
-		if err != nil {
-			return nil, nil, fmt.Errorf("Directory schema: %w", err)
-		}
 
-		scopes = append(scopes, scope{path: "directory", schema: compiled})
+		switch extension.Name {
+		case "directory":
+			compiled, err := compileSchema(directory.Schema)
+			if err != nil {
+				return nil, nil, fmt.Errorf("Directory schema: %w", err)
+			}
+
+			scopes = append(scopes, scope{path: "directory", schema: compiled})
+		case "wiki":
+			compiled, err := compileSchema([]byte(`{"type":"object"}`))
+			if err != nil {
+				return nil, nil, fmt.Errorf("Wiki schema: %w", err)
+			}
+
+			scopes = append(scopes, scope{path: "wiki", schema: compiled})
+		case "lists":
+			listScopes, issues, err := resolveLists(root)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			scopes = append(scopes, listScopes...)
+			diagnostics = append(diagnostics, issues...)
+		}
 	}
 
 	return scopes, diagnostics, nil
 }
 
+// A scope applies one schema to the Markdown files of one folder. When match is
+// set, the scope covers only the files for which it returns true.
 type scope struct {
 	path   string
 	schema *jsonschema.Schema
+	match  func(path string) bool
 }
 
 func extensionDiagnostic(field, message string) Diagnostic {

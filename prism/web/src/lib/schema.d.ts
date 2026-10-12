@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a set of edits as one commit
+         * @description Core applies one change at a time. It rejects a change when an edit does not fit the current files, when a file changed after the change was sent, or when the result is not valid. A rejected change modifies nothing.
+         */
+        post: operations["apply-change"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -21,15 +41,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/workspace/diagnostics": {
+    "/lists": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Validate the workspace and list its errors */
-        get: operations["list-workspace-diagnostics"];
+        /** List the lists in the workspace */
+        get: operations["list-lists"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lists/{list}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one list and its entries */
+        get: operations["get-list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one Markdown page */
+        get: operations["get-page"];
         put?: never;
         post?: never;
         delete?: never;
@@ -42,6 +96,48 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ChangeInput: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ChangeInput.json
+             */
+            readonly $schema?: string;
+            /** @description Agent or person that made the change */
+            author: string;
+            /** @description New Markdown files */
+            creates?: components["schemas"]["Create"][] | null;
+            /** @description Commit message */
+            message: string;
+            /** @description Text replacements in existing Markdown files */
+            replacements?: components["schemas"]["Replacement"][] | null;
+            /**
+             * Format: date-time
+             * @description Time when the author sent the change
+             */
+            sentAt: string;
+        };
+        ChangeOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ChangeOutputBody.json
+             */
+            readonly $schema?: string;
+            /** @description False when Core rejected the change; nothing was modified */
+            applied: boolean;
+            /** @description Hash of the new commit; empty when Core rejected the change */
+            commit: string;
+            /** @description Validation errors of the workspace with the change applied */
+            diagnostics: components["schemas"]["Diagnostic"][];
+            /** @description Edits that do not fit the current files */
+            rejections: components["schemas"]["Rejection"][];
+        };
+        Create: {
+            content: string;
+            /** @description Workspace-relative path of the new file */
+            path: string;
+        };
         Diagnostic: {
             /** @description Display label of the field; empty when the error is not about a field */
             field: string;
@@ -54,14 +150,10 @@ export interface components {
             /** @description Workspace-relative path of the source file */
             path: string;
         };
-        DiagnosticsOutputBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/DiagnosticsOutputBody.json
-             */
-            readonly $schema?: string;
-            diagnostics: components["schemas"]["Diagnostic"][];
+        Entry: {
+            /** @description Workspace-relative path of the entry file */
+            path: string;
+            title: string;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -110,6 +202,11 @@ export interface components {
              */
             type: string;
         };
+        Field: {
+            name: string;
+            /** @description Display text of the value; list items are separated by commas */
+            value: string;
+        };
         HealthOutputBody: {
             /**
              * Format: uri
@@ -120,6 +217,60 @@ export interface components {
             /** @enum {string} */
             status: "ok";
         };
+        List: {
+            description: string;
+            /** Format: int64 */
+            entryCount: number;
+            name: string;
+            /** @description Folder name of the list in lists/ */
+            slug: string;
+        };
+        ListOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListOutputBody.json
+             */
+            readonly $schema?: string;
+            entries: components["schemas"]["Entry"][];
+            list: components["schemas"]["List"];
+        };
+        ListsOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ListsOutputBody.json
+             */
+            readonly $schema?: string;
+            lists: components["schemas"]["List"][];
+        };
+        Page: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Page.json
+             */
+            readonly $schema?: string;
+            /** @description Markdown text after the front matter */
+            body: string;
+            /** @description Front matter fields in source order */
+            fields: components["schemas"]["Field"][];
+            /** @description Workspace-relative path of the Markdown file */
+            path: string;
+            /** @description The title or name field; the file name when the page has neither */
+            title: string;
+        };
+        Rejection: {
+            message: string;
+            path: string;
+        };
+        Replacement: {
+            newText: string;
+            /** @description Text that occurs exactly once in the file */
+            oldText: string;
+            /** @description Workspace-relative path of an existing file */
+            path: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -129,6 +280,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    "apply-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-health": {
         parameters: {
             query?: never;
@@ -158,7 +342,7 @@ export interface operations {
             };
         };
     };
-    "list-workspace-diagnostics": {
+    "list-lists": {
         parameters: {
             query?: never;
             header?: never;
@@ -173,7 +357,70 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DiagnosticsOutputBody"];
+                    "application/json": components["schemas"]["ListsOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                list: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-page": {
+        parameters: {
+            query: {
+                /** @description Workspace-relative path of the Markdown file */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page"];
                 };
             };
             /** @description Error */

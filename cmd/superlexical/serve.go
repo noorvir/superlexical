@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"superlexical/api"
+	"superlexical/store"
 )
 
 func runServe(args []string, stdout, stderr io.Writer) int {
@@ -56,7 +57,13 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	handler, _ := api.New(root)
+	workspace, err := store.Open(root)
+	if err != nil {
+		fmt.Fprintf(stderr, "Cannot open the workspace %q: %s\n", root, err)
+		return 2
+	}
+
+	handler, _ := api.New(workspace)
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
 	failed := make(chan error, 1)
@@ -90,7 +97,7 @@ func runOpenAPI(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	_, spec := api.New(".")
+	_, spec := api.New(nil)
 	encoder := json.NewEncoder(stdout)
 	encoder.SetIndent("", "  ")
 

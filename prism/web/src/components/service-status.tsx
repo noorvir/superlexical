@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 
-import { getCoreHealth, getDiagnostics, getRayHealth } from "@/lib/api"
+import { getCoreHealth, getLists, getRayHealth } from "@/lib/api"
 
 const refetchInterval = 5000
 
@@ -17,19 +17,16 @@ export function ServiceStatus() {
     refetchInterval,
     retry: false,
   })
-  const diagnostics = useQuery({
-    queryKey: ["core", "diagnostics"],
-    queryFn: getDiagnostics,
+  const lists = useQuery({
+    queryKey: ["core", "lists"],
+    queryFn: getLists,
     refetchInterval,
     retry: false,
   })
 
-  let workspace = "Not checked"
-  if (diagnostics.isSuccess) {
-    workspace = "Valid"
-  }
-  if (diagnostics.isSuccess && diagnostics.data.length > 0) {
-    workspace = `${diagnostics.data.length} errors`
+  let listCount = "Not known"
+  if (lists.isSuccess) {
+    listCount = String(lists.data.length)
   }
 
   return (
@@ -37,8 +34,8 @@ export function ServiceStatus() {
       <Service name="Core" status={core.status} />
       <Service name="Ray" status={ray.status} />
       <div className="hidden items-center gap-1.5 sm:flex">
-        <dt className="text-muted-foreground">Workspace</dt>
-        <dd className="font-medium">{workspace}</dd>
+        <dt className="text-muted-foreground">Lists</dt>
+        <dd className="font-medium tabular-nums">{listCount}</dd>
       </div>
     </dl>
   )

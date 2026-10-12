@@ -1,0 +1,12 @@
+{
+  "extensions": [
+    {
+      "name": "lists",
+      "dependencies": []
+    },
+    {
+      "name": "wiki",
+      "dependencies": []
+    }
+  ]
+}

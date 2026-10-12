@@ -13,13 +13,13 @@ export async function getCoreHealth() {
   return data
 }
 
-export async function getDiagnostics() {
-  const { data, error } = await core.GET("/workspace/diagnostics")
+export async function getLists() {
+  const { data, error } = await core.GET("/lists")
   if (error) {
-    throw new Error("Core cannot validate the workspace")
+    throw new Error("Core cannot read the lists")
   }
 
-  return data.diagnostics
+  return data.lists
 }
 
 export async function getRayHealth() {

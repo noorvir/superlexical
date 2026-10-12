@@ -56,6 +56,11 @@ func compile(root string, scopes []scope, diagnostics []Diagnostic) []Diagnostic
 
 	for _, scope := range scopes {
 		batch, issues, err := readDocuments(root, scope.path)
+		if scope.match != nil {
+			batch = slices.DeleteFunc(batch, func(doc document) bool { return !scope.match(doc.path) })
+			issues = slices.DeleteFunc(issues, func(issue Diagnostic) bool { return !scope.match(issue.Path) })
+		}
+
 		diagnostics = append(diagnostics, issues...)
 		if err != nil {
 			diagnostics = append(diagnostics, Diagnostic{scope.path, 1, "file", "cannot read record folder: " + fileError(err)})
