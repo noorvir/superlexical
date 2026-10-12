@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>PRISM_CORE_URL</key>
+	<string>$(PRISM_CORE_URL)</string>
+	<key>PRISM_RAY_URL</key>
+	<string>$(PRISM_RAY_URL)</string>
+</dict>
+</plist>

@@ -1,0 +1,8 @@
+// Build settings shared by all configurations.
+// Machine-specific values go in Local.xcconfig, which Git ignores.
+
+DEVELOPMENT_TEAM =
+PRISM_CORE_URL =
+PRISM_RAY_URL =
+
+#include? "Local.xcconfig"

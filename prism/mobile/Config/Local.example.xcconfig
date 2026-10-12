@@ -1,0 +1,9 @@
+// Copy this file to Local.xcconfig and set the values for your machine.
+// xcconfig files read "//" as a comment, so write URLs as http:/$()/host:port.
+
+DEVELOPMENT_TEAM =
+
+// A physical device cannot reach 127.0.0.1 on the Mac. Use the LAN address
+// of the Mac, and start Core and Ray on an address the device can reach.
+PRISM_CORE_URL =
+PRISM_RAY_URL =

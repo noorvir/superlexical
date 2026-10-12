@@ -1,0 +1,14 @@
+bun.lock
+node_modules/
+dist/
+bin/
+.agent/
+core/testdata/
+openapi.json
+prism/web/src/lib/schema.d.ts
+prism/web/src/typeset.css
+prism/mobile/
+*.md
+.vscode/
+extensions/
+prism/web/src/routeTree.gen.ts

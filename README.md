@@ -4,6 +4,74 @@ Superlexical stores structured records in linked Markdown files. The core compil
 
 This repository uses one root Go module. The compiler library is in `core`; the CLI is in `cmd/superlexical`.
 
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `core/`, `cmd/`, `extensions/` | Superlexical Core: the Go compiler and CLI |
+| `api/` | HTTP API for a workspace, built with [huma](https://huma.rocks) |
+| `prism/web/` | Prism web app: TanStack Start, React, Tailwind CSS, shadcn/ui theme |
+| `prism/mobile/` | Prism iOS app: SwiftUI |
+| `ray/` | Ray, the agent service: TypeScript on Bun |
+
+## Develop
+
+Install [Go](https://go.dev), [Bun](https://bun.sh), and Xcode 26 or later. Then install the JavaScript dependencies:
+
+```sh
+bun install
+```
+
+Start Core, Ray, and the Prism web app. Each one reloads when its source changes:
+
+```sh
+bun run dev
+```
+
+| Service | Address | Reload |
+| --- | --- | --- |
+| Core | http://127.0.0.1:4100 | `wgo` builds and starts the server again |
+| Ray | http://127.0.0.1:4200 | `bun --watch` |
+| Prism web | http://127.0.0.1:4300 | Vite hot module replacement |
+
+Core serves the sample workspace in `core/testdata/workspace`. Prism web sends `/api` requests to Core and `/ray` requests to Ray.
+
+Build the Prism iOS app and start it on a simulator. Give a device name to use a simulator other than iPhone 17 Pro:
+
+```sh
+bun run dev:mobile
+bun run dev:mobile "iPhone Air"
+```
+
+The iOS app uses Core and Ray at `127.0.0.1`. To change the addresses or set a signing team, copy `prism/mobile/Config/Local.example.xcconfig` to `Local.xcconfig`.
+
+Run all checks before you commit:
+
+```sh
+bun run check
+```
+
+## Use the API
+
+```sh
+go run ./cmd/superlexical serve --addr 127.0.0.1:4100 ./core/testdata/workspace
+```
+
+| Endpoint | Result |
+| --- | --- |
+| `GET /health` | Reports that the server is running |
+| `GET /workspace/diagnostics` | Validates the workspace and lists its errors |
+| `GET /openapi.json` | OpenAPI 3.1 specification |
+| `GET /docs` | API documentation |
+
+After you change an endpoint, write the specification and the Prism web types again:
+
+```sh
+bun run generate:api
+```
+
+This command updates `openapi.json` and `prism/web/src/lib/schema.d.ts`. Commit both files.
+
 ## Use the CLI
 
 Build the executable from the repository root:
@@ -186,4 +254,4 @@ go test -race ./...
 go vet ./...
 ```
 
-The tests use checked-in samples and temporary directories. They cover the compiler API, CLI feedback and exit codes, and real file changes in watch mode. This version contains no file server, database, update subscription service, or executable extension runtime.
+The tests use checked-in samples and temporary directories. They cover the compiler API, CLI feedback and exit codes, and real file changes in watch mode. This version contains no database, update subscription service, or executable extension runtime.
