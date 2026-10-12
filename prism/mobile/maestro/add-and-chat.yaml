@@ -1,0 +1,21 @@
+# Continues from search.yaml: accepts the list suggestion, changes to Chat,
+# and then opens the new entry in the list.
+appId: dev.superlexical.prism
+env:
+  TOPIC: Marcus Aurelius
+---
+- takeScreenshot: 04-result-with-pill
+- tapOn: Add ${TOPIC} to Historical Figures
+- takeScreenshot: 05-after-add
+- tapOn: Chat
+- extendedWaitUntil:
+    visible: Wikipedia
+    timeout: 10000
+- tapOn:
+    point: 55%,93%
+- inputText: Which of my lists has other Roman emperors? One sentence.
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: .*[Hh]istorical.*
+    timeout: 60000
+- takeScreenshot: 06-chat-from-search

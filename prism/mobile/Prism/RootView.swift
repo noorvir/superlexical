@@ -7,15 +7,10 @@ struct RootView: View {
                 ListsView()
             }
 
-            Tab("Chat", systemImage: "bubble.left.and.bubble.right") {
-                ChatView()
-            }
-
             Tab(role: .search) {
-                SearchView()
+                AssistantView()
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
     }
 }
 

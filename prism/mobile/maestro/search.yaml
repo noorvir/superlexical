@@ -1,0 +1,23 @@
+# Searches for a topic and waits for the result and the list suggestion.
+# Start Core and Ray with "bun run dev" first. The answers come from a live model.
+appId: dev.superlexical.prism
+env:
+  TOPIC: Marcus Aurelius
+---
+- launchApp
+- assertVisible: Historical Figures
+- takeScreenshot: 01-lists
+- tapOn: Search
+- takeScreenshot: 02-search-empty
+# The search field is the bar at the bottom of the screen.
+- tapOn:
+    point: 55%,93%
+- inputText: ${TOPIC}
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: Wikipedia
+    timeout: 30000
+- extendedWaitUntil:
+    visible: Add ${TOPIC} to Historical Figures
+    timeout: 30000
+- takeScreenshot: 03-search-result

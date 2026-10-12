@@ -1,0 +1,26 @@
+# Opens the list and waits until the background agent has added the entry.
+appId: dev.superlexical.prism
+env:
+  TOPIC: Marcus Aurelius
+---
+- launchApp
+- tapOn: Historical Figures
+- takeScreenshot: 07-list
+# The entry shows a progress indicator with the label "Adding" until Ray has committed it.
+- extendedWaitUntil:
+    notVisible: Adding
+    timeout: 180000
+- assertVisible: ${TOPIC}
+- takeScreenshot: 08-list-with-entry
+- tapOn: ${TOPIC}
+- extendedWaitUntil:
+    visible: Role
+    timeout: 10000
+- takeScreenshot: 09-entry-page
+# The link is in the first line of the text. Maestro cannot select a link inside a paragraph by its text.
+- tapOn:
+    point: 83%,54%
+- extendedWaitUntil:
+    visible: Provinces
+    timeout: 10000
+- takeScreenshot: 10-linked-page
