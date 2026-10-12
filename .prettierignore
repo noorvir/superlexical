@@ -12,3 +12,5 @@ prism/mobile/
 .vscode/
 extensions/
 prism/web/src/routeTree.gen.ts
+.dev/
+examples/workspace/

@@ -9,14 +9,16 @@ This repository uses one root Go module. The compiler library is in `core`; the 
 | Path | Contents |
 | --- | --- |
 | `core/`, `cmd/`, `extensions/` | Superlexical Core: the Go compiler and CLI |
+| `store/` | Git repository of a workspace: commits only valid workspaces |
 | `api/` | HTTP API for a workspace, built with [huma](https://huma.rocks) |
 | `prism/web/` | Prism web app: TanStack Start, React, Tailwind CSS, shadcn/ui theme |
 | `prism/mobile/` | Prism iOS app: SwiftUI |
-| `ray/` | Ray, the agent service: TypeScript on Bun |
+| `ray/` | Ray, the agent server: TypeScript on Node.js with Pi Durable |
+| `examples/workspace/` | Sample workspace with lists and wiki pages |
 
 ## Develop
 
-Install [Go](https://go.dev), [Bun](https://bun.sh), and Xcode 26 or later. Then install the JavaScript dependencies:
+Install [Go](https://go.dev), [Bun](https://bun.sh), [Node.js](https://nodejs.org) 22.19 or later, Git, and Xcode 26 or later. Then install the JavaScript dependencies:
 
 ```sh
 bun install
@@ -31,16 +33,26 @@ bun run dev
 | Service | Address | Reload |
 | --- | --- | --- |
 | Core | http://127.0.0.1:4100 | `wgo` builds and starts the server again |
-| Ray | http://127.0.0.1:4200 | `bun --watch` |
+| Ray | http://127.0.0.1:4200 | `node --watch` |
 | Prism web | http://127.0.0.1:4300 | Vite hot module replacement |
 
-Core serves the sample workspace in `core/testdata/workspace`. Prism web sends `/api` requests to Core and `/ray` requests to Ray.
+The first start copies `examples/workspace` to `.dev/workspace`, which Git ignores. Core serves that copy and is the only writer of it. Delete `.dev` to start again from the sample. Prism web sends `/api` requests to Core and `/ray` requests to Ray.
+
+Ray needs a model credential. `RAY_MODEL` selects the model as `provider/modelId`; the default is `openai-codex/gpt-5.6-luna`. For `openai-codex` models, Ray uses the login of the Codex CLI in `~/.codex/auth.json`, and writes a refreshed token back to that file. For a Together model, such as `together/moonshotai/Kimi-K3`, set `TOGETHER_API_KEY`. When it is not set, `ray/scripts/dev.sh` reads `op://nos/togetherai-api-key/credential` with the 1Password agent token.
 
 Build the Prism iOS app and start it on a simulator. Give a device name to use a simulator other than iPhone 17 Pro:
 
 ```sh
 bun run dev:mobile
 bun run dev:mobile "iPhone Air"
+```
+
+The command does not bring the Simulator window to the front. To see the device, open Device Hub from the Xcode menu (Xcode 27), or run `open -a Simulator` (Xcode 26).
+
+To check the main flow in the simulator, install [Maestro](https://maestro.dev) and run the flows while `bun run dev` is running. The answers come from a live model:
+
+```sh
+maestro test prism/mobile/maestro/search.yaml prism/mobile/maestro/add-and-chat.yaml prism/mobile/maestro/lists.yaml
 ```
 
 The iOS app uses Core and Ray at `127.0.0.1`. To change the addresses or set a signing team, copy `prism/mobile/Config/Local.example.xcconfig` to `Local.xcconfig`.
@@ -53,16 +65,29 @@ bun run check
 
 ## Use the API
 
+Core keeps the workspace in a Git repository and serves the last commit. Core is the only writer. It applies one change at a time, and a commit exists only for a workspace that passed validation. So the history is linear, and readers always get the last known good version.
+
 ```sh
-go run ./cmd/superlexical serve --addr 127.0.0.1:4100 ./core/testdata/workspace
+go run ./cmd/superlexical serve --addr 127.0.0.1:4100 ./examples/workspace
 ```
 
 | Endpoint | Result |
 | --- | --- |
 | `GET /health` | Reports that the server is running |
-| `GET /workspace/diagnostics` | Validates the workspace and lists its errors |
+| `GET /lists` | Lists in the workspace |
+| `GET /lists/{list}` | One list and its entries |
+| `GET /page?path=` | Title, fields, and Markdown body of one page |
+| `POST /changes` | Applies a set of edits as one commit, or rejects all of them with the reasons |
 | `GET /openapi.json` | OpenAPI 3.1 specification |
 | `GET /docs` | API documentation |
+
+A change has an author, a message, the time when it was sent, new files, and text replacements in existing files. Core rejects a change, and modifies nothing, in these cases:
+
+- A file of the change was changed after the time when the change was sent. The author must read the file again.
+- A new file exists already, or the old text of a replacement does not occur exactly once in its file.
+- The workspace with the change applied fails validation.
+
+Core does not rename or delete files.
 
 After you change an endpoint, write the specification and the Prism web types again:
 
@@ -121,9 +146,46 @@ For an agent workflow, run `superlexical validate ROOT` after each completed gro
 
 Watch mode runs an initial validation, then uses native filesystem events to trigger another full check after 150 ms without events. It handles new subdirectories and atomic saves, and also watches extension configuration changes and any supplied schema file. It continues after validation errors. Ctrl+C stops it and returns the last validation status. A watcher failure stops with exit code `2`. Watch mode does not create a consistent filesystem snapshot; use the one-shot command after an agent finishes its edits when a final pass is required. Filesystems that do not supply native change events need the post-edit command instead.
 
+## Lists
+
+The `lists` extension validates each folder in `lists/`. The `index.md` of a list has the name of the list and a JSON Schema for the front matter of its entries:
+
+```markdown
+---
+name: Movies
+schema:
+  type: object
+  required: [title, director, imdb, rotten_tomatoes]
+  properties:
+    title: {type: string}
+    director: {type: string}
+    imdb: {type: number}
+    rotten_tomatoes: {type: number}
+    cast:
+      type: array
+      items: {type: string}
+---
+```
+
+Each other Markdown file in the folder is an entry. An entry without `director` fails validation; `cast` is optional. A list without a schema accepts any front matter. The `wiki` extension checks the front matter syntax and the links of the pages in `wiki/`.
+
+## Ray
+
+Ray is the agent server. Its agents read the workspace files directly and send all changes to Core.
+
+| Endpoint | Result |
+| --- | --- |
+| `POST /search` | Event stream for one query: provider results, a model summary, and a list suggestion |
+| `POST /searches/{id}/session` | Converts a finished search into a chat session |
+| `POST /additions` | Starts a background agent that adds an entry to a list and links it to existing pages |
+| `GET /additions` | The additions and their states |
+| `WS /acp` | Chat sessions over the [Agent Client Protocol](https://agentclientprotocol.com) |
+
+Conversations and background tasks are stored with Pi Durable in `.dev/ray`. Search providers implement the interfaces in `ray/src/search/provider.ts`; Wikipedia is the only provider.
+
 ## Workspace configuration
 
-The compiler reads `.superlexical/extensions.json` from the selected workspace root:
+The compiler reads `.superlexical/extensions.json` from the selected workspace root. The extension names are `directory`, `lists`, and `wiki`:
 
 ```json
 {

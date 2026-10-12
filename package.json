@@ -7,9 +7,10 @@
     "ray"
   ],
   "scripts": {
-    "dev": "bun run --parallel dev:core dev:ray dev:web",
-    "dev:core": "go tool wgo run -file .go -xdir node_modules ./cmd/superlexical serve core/testdata/workspace",
-    "dev:ray": "bun --filter @superlexical/ray dev",
+    "dev": "bun run dev:workspace && bun run --parallel dev:core dev:ray dev:web",
+    "dev:workspace": "test -d .dev/workspace || (mkdir -p .dev && cp -R examples/workspace .dev/workspace)",
+    "dev:core": "go tool wgo run -file .go -xdir node_modules -xdir .dev ./cmd/superlexical serve .dev/workspace",
+    "dev:ray": "RAY_WORKSPACE=$PWD/.dev/workspace RAY_DATA_DIR=$PWD/.dev/ray bun --filter @superlexical/ray dev",
     "dev:web": "bun --filter @superlexical/prism-web dev",
     "dev:mobile": "prism/mobile/scripts/run-simulator.sh",
     "generate:api": "go run ./cmd/superlexical openapi > openapi.json && bun --filter @superlexical/prism-web generate:api",

@@ -3,6 +3,7 @@
 
 /bin/
 node_modules/
+/.dev/
 dist/
 .output/
 .nitro/

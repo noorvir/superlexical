@@ -1,16 +1,9 @@
+import { harness } from "./agent/harness.ts"
 import { env } from "./env.ts"
+import { startServer } from "./server.ts"
 
-const server = Bun.serve({
-  hostname: env.RAY_HOST,
-  port: env.RAY_PORT,
-  routes: {
-    "/health": {
-      GET: () => Response.json({ status: "ok" }),
-    },
-  },
-  fetch() {
-    return Response.json({ message: "Not found" }, { status: 404 })
-  },
-})
+harness.resume()
+startServer()
 
-console.log(`Ray listening on ${server.url}`)
+console.log(`Ray listening on http://${env.RAY_HOST}:${env.RAY_PORT}`)
+console.log(`Ray uses the model ${env.RAY_MODEL}`)
