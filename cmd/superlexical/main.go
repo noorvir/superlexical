@@ -16,17 +16,36 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+const usage = `Usage:
+  superlexical validate [--schema FILE] [--watch] ROOT
+  superlexical serve [--addr ADDRESS] ROOT
+  superlexical openapi`
+
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
-		fmt.Fprintln(stdout, "Usage: superlexical validate [--schema FILE] [--watch] ROOT")
+		fmt.Fprintln(stdout, usage)
 		return 0
 	}
 
-	if len(args) == 0 || args[0] != "validate" {
-		fmt.Fprintln(stderr, "Usage: superlexical validate [--schema FILE] [--watch] ROOT")
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, usage)
 		return 2
 	}
 
+	switch args[0] {
+	case "validate":
+		return runValidate(args[1:], stdout, stderr)
+	case "serve":
+		return runServe(args[1:], stdout, stderr)
+	case "openapi":
+		return runOpenAPI(args[1:], stdout, stderr)
+	}
+
+	fmt.Fprintln(stderr, usage)
+	return 2
+}
+
+func runValidate(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("validate", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	watchChanges := flags.Bool("watch", false, "revalidate the full directory after file changes")
@@ -37,7 +56,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		flags.PrintDefaults()
 	}
 
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
 		}
